@@ -40,25 +40,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS configuration
-origins = [
-    "http://localhost:3000",  # React dev server
-    "http://localhost:5173",  # Vite dev server
-    "https://solvestack.vercel.app",  # Production frontend (update with your domain)
-]
-
+# CORS configuration - Allow all origins in development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False,  # Set to False when using wildcard
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 
 # ============ Authentication Endpoints ============
 
-@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
+@app.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
     """
     Register a new user
@@ -66,6 +62,8 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     - **email**: Valid email address (unique)
     - **username**: Username (3-50 chars, unique)
     - **password**: Password (min 6 chars)
+    
+    Returns JWT access token for immediate login
     """
     # Check if email already exists
     existing_email = db.query(User).filter(User.email == user.email).first()
@@ -95,7 +93,10 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
-    return new_user
+    # Create JWT token for immediate login
+    access_token = create_access_token(data={"sub": new_user.email})
+    
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @app.post("/login", response_model=Token, tags=["Authentication"])
@@ -129,6 +130,20 @@ def login_user(
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user information (requires authentication)"""
     return current_user
+
+
+@app.get("/me/interested", response_model=List[int], tags=["Authentication"])
+def get_user_interested_problems(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get list of problem IDs that current user is interested in (requires authentication)"""
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    interested_ids = [problem.ps_id for problem in user.interested_problems]
+    return interested_ids
 
 
 # ============ Problem Endpoints ============
@@ -174,6 +189,8 @@ def get_problems(
             "reference_link": problem.reference_link,
             "tags": problem.tags or [],
             "scraped_at": problem.scraped_at,
+            "difficulty": problem.difficulty or "Intermediate",
+            "estimated_effort": problem.estimated_effort or "1-3 days",
             "interested_count": len(problem.interested_users)
         }
         result.append(problem_dict)
@@ -1176,4 +1193,4 @@ def health_check():
 # Run with: uvicorn main:app --reload
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
