@@ -177,6 +177,8 @@ def get_problems(
     # Add interested count to each problem
     result = []
     for problem in problems:
+        # Compute quality score and difficulty for each problem
+        quality = compute_problem_quality_score(problem)
         problem_dict = {
             "ps_id": problem.ps_id,
             "title": problem.title,
@@ -189,8 +191,8 @@ def get_problems(
             "reference_link": problem.reference_link,
             "tags": problem.tags or [],
             "scraped_at": problem.scraped_at,
-            "difficulty": problem.difficulty or "Intermediate",
-            "estimated_effort": problem.estimated_effort or "1-3 days",
+            "difficulty": quality["difficulty"],
+            "estimated_effort": quality["estimated_effort"],
             "interested_count": len(problem.interested_users)
         }
         result.append(problem_dict)
