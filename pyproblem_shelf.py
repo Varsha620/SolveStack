@@ -229,11 +229,33 @@ def scrape_all(limit=20):
 def store_problems_in_db(new_problems, db: Session):
     """Store cleaned problems in database using ORM (works with PostgreSQL or SQLite)"""
     from models import Problem
-    
+    from scoring_engine import compute_problem_quality_score
+
     inserted = 0
     for problem_data in new_problems:
         try:
-            # Create Problem instance
+            # Compute difficulty and estimated_effort using scoring_engine
+            class DummyProblem:
+                pass
+            dummy = DummyProblem()
+            dummy.title = problem_data['title']
+            dummy.description = problem_data['description']
+            dummy.source = problem_data['source']
+            dummy.date = problem_data['date']
+            dummy.suggested_tech = problem_data['suggested_tech']
+            dummy.author_name = problem_data['author_name']
+            dummy.author_id = problem_data['author_id']
+            dummy.reference_link = problem_data['reference_link']
+            dummy.tags = problem_data['tags']
+            dummy.interested_users = []
+            dummy.upvotes = 0
+            dummy.views = 0
+
+            quality = compute_problem_quality_score(dummy)
+            difficulty = quality.get('difficulty', 'Intermediate')
+            estimated_effort = quality.get('estimated_effort', '1-3 days')
+
+            # Create Problem instance with difficulty and estimated_effort
             new_problem = Problem(
                 title=problem_data['title'],
                 description=problem_data['description'],
@@ -243,9 +265,11 @@ def store_problems_in_db(new_problems, db: Session):
                 author_name=problem_data['author_name'],
                 author_id=problem_data['author_id'],
                 reference_link=problem_data['reference_link'],
-                tags=problem_data['tags']
+                tags=problem_data['tags'],
+                difficulty=difficulty,
+                estimated_effort=estimated_effort
             )
-            
+
             db.add(new_problem)
             db.commit()
             inserted += 1
@@ -257,7 +281,7 @@ def store_problems_in_db(new_problems, db: Session):
             print(f"Error inserting problem: {e}")
             db.rollback()
             continue
-    
+
     print(f"Added {inserted} new problems to database (duplicates skipped).")
     return inserted
 
